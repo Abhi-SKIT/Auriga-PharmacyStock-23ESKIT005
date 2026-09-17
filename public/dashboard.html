@@ -5,168 +5,648 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard | PharmFEFO</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Smooth transitions for interactive state changes */
+    .modal-backdrop { transition: opacity 0.2s ease, visibility 0.2s ease; }
+    .table-row-hover:hover { background-color: #f8fafc; }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen">
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col font-sans">
 
-  <!-- Toast Notification Container -->
-  <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+  <!-- Toast Notification Stack -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
 
-  <!-- Header -->
-  <header class="bg-white border-b sticky top-0 z-30 shadow-sm">
+  <!-- Top App Navigation -->
+  <header class="bg-white border-b sticky top-0 z-30 shadow-xs">
     <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
       <div class="flex items-center space-x-3">
-        <div class="w-8 h-8 bg-emerald-600 text-white font-bold rounded flex items-center justify-center">P</div>
+        <div class="w-9 h-9 bg-emerald-600 text-white font-bold rounded-xl flex items-center justify-center shadow-xs">
+          P
+        </div>
         <div>
-          <span class="font-bold text-base leading-none block">PharmFEFO</span>
-          <span id="pharmacyLabel" class="text-xs text-slate-500">Loading pharmacy...</span>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-base tracking-tight text-slate-900">PharmFEFO</span>
+            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full">Live Safe</span>
+          </div>
+          <span id="pharmacyLabel" class="text-xs text-slate-500 font-medium">Loading session...</span>
         </div>
       </div>
-      <button id="logoutBtn" class="text-xs font-semibold text-slate-600 hover:text-red-600 border px-3 py-1.5 rounded bg-white">Sign Out</button>
+
+      <div class="flex items-center space-x-3">
+        <span class="hidden md:inline-flex items-center text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+          Press <kbd class="px-1 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px] mx-1"> / </kbd> to search
+        </span>
+        <button id="logoutBtn" class="text-xs font-semibold text-slate-600 hover:text-red-600 hover:border-red-200 border px-3.5 py-1.5 rounded-lg bg-white transition shadow-2xs">
+          Sign Out
+        </button>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+  <main class="max-w-7xl mx-auto px-6 py-6 space-y-6 flex-1 w-full">
 
-    <!-- 30-Day Critical Alerts Banner -->
-    <div id="alertBanner" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-4">
-      <div class="flex items-center justify-between mb-2">
-        <div class="text-amber-800 font-bold text-sm flex items-center space-x-1.5">
-          <span>⚠️</span>
-          <span id="alertCountLabel">0 batch(es) expiring within 30 days</span>
+    <!-- 30-Day Critical Expiry Alerts Banner -->
+    <div id="alertBanner" class="hidden bg-amber-50/80 border border-amber-200 rounded-2xl p-4 transition duration-200">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-amber-900 font-bold text-sm flex items-center space-x-2">
+          <span class="text-base">⚠️</span>
+          <span id="alertCountLabel">Batches Expiring Soon</span>
+        </div>
+        <span class="text-[11px] text-amber-700 bg-amber-100/70 px-2.5 py-1 rounded-full font-medium">Prioritized for FEFO Dispense</span>
+      </div>
+      <div id="alertList" class="grid sm:grid-cols-2 md:grid-cols-3 gap-2.5"></div>
+    </div>
+
+    <!-- Interactive Filters & Controls Toolbar -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+      <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+        <!-- Live Search Bar -->
+        <div class="flex-1 relative">
+          <input type="text" id="searchInput" placeholder="Search medicine name or category (press '/' to focus)..." 
+                 class="w-full pl-9 pr-4 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+        </div>
+
+        <!-- Sorting & Add Medicine -->
+        <div class="flex items-center space-x-2.5">
+          <select id="sortSelect" class="border rounded-xl text-sm px-3 py-2 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="m.name-asc">Sort: Name (A to Z)</option>
+            <option value="m.name-desc">Sort: Name (Z to A)</option>
+            <option value="sellable_stock-asc">Stock: Lowest First</option>
+            <option value="sellable_stock-desc">Stock: Highest First</option>
+          </select>
+          <button id="openNewMedModalBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-sm font-semibold rounded-xl shadow-xs transition flex items-center space-x-1.5 whitespace-nowrap">
+            <span>+</span>
+            <span>New Medicine</span>
+          </button>
         </div>
       </div>
-      <div id="alertList" class="grid sm:grid-cols-2 md:grid-cols-3 gap-2"></div>
-    </div>
 
-    <!-- Controls Row -->
-    <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-      <div class="flex-1 relative">
-        <input type="text" id="searchInput" placeholder="Search medicine or category (e.g. Paracetamol)..." 
-               class="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
-        <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-      </div>
-      
-      <div class="flex items-center space-x-3">
-        <select id="sortSelect" class="border rounded-lg text-sm px-3 py-2 bg-white">
-          <option value="m.name-asc">Name (A-Z)</option>
-          <option value="m.name-desc">Name (Z-A)</option>
-          <option value="sellable_stock-asc">Stock (Lowest First)</option>
-          <option value="sellable_stock-desc">Stock (Highest First)</option>
-        </select>
-        <button id="openNewMedModalBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm whitespace-nowrap">+ New Medicine</button>
+      <!-- Quick Filter Chips -->
+      <div class="flex items-center space-x-2 pt-1 border-t border-slate-100 text-xs font-medium">
+        <span class="text-slate-400 text-[11px] uppercase tracking-wider font-semibold">Filters:</span>
+        <button onclick="setFilter('all')" id="filterChip-all" class="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 transition">All Medicines</button>
+        <button onclick="setFilter('lowStock')" id="filterChip-lowStock" class="px-3 py-1 rounded-lg text-slate-600 hover:bg-slate-100 transition">Low Stock (<25)</button>
+        <button onclick="setFilter('hasExpired')" id="filterChip-hasExpired" class="px-3 py-1 rounded-lg text-slate-600 hover:bg-slate-100 transition">Has Expired Lots</button>
       </div>
     </div>
 
-    <!-- Inventory Table -->
-    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <!-- Inventory Table Container -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
       <table class="w-full text-left text-sm">
-        <thead class="bg-slate-100 text-slate-600 font-semibold text-xs uppercase tracking-wider">
+        <thead class="bg-slate-50 border-b text-slate-500 font-semibold text-xs uppercase tracking-wider">
           <tr>
-            <th class="px-6 py-3">Medicine & Category</th>
-            <th class="px-6 py-3">Sellable In-Date Stock</th>
-            <th class="px-6 py-3">Next Expiring Batch</th>
-            <th class="px-6 py-3">Audit Warnings</th>
-            <th class="px-6 py-3 text-right">Actions</th>
+            <th class="px-6 py-3.5">Medicine</th>
+            <th class="px-6 py-3.5">Sellable In-Date Stock</th>
+            <th class="px-6 py-3.5">Earliest Expiry</th>
+            <th class="px-6 py-3.5">Lot Safety Status</th>
+            <th class="px-6 py-3.5 text-right">Actions</th>
           </tr>
         </thead>
         <tbody id="inventoryTbody" class="divide-y divide-slate-100">
-          <tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">Loading stock records...</td></tr>
+          <tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">Loading catalog records...</td></tr>
         </tbody>
       </table>
 
-      <!-- Pagination -->
-      <div class="px-6 py-4 bg-slate-50 border-t flex items-center justify-between text-xs text-slate-600">
+      <!-- Pagination Toolbar -->
+      <div class="px-6 py-3.5 bg-slate-50 border-t flex items-center justify-between text-xs text-slate-600">
         <div id="paginationInfo">Showing 0 of 0 medicines</div>
         <div class="space-x-2">
-          <button id="prevPageBtn" class="px-3 py-1 border rounded bg-white disabled:opacity-40">Previous</button>
-          <button id="nextPageBtn" class="px-3 py-1 border rounded bg-white disabled:opacity-40">Next</button>
+          <button id="prevPageBtn" class="px-3.5 py-1.5 border rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition">Previous</button>
+          <button id="nextPageBtn" class="px-3.5 py-1.5 border rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition">Next</button>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- FEFO Dispense Modal -->
-  <div id="dispenseModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
-    <div class="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
-      <div class="flex justify-between items-center mb-3">
+  <!-- Interactive FEFO Dispense Modal with Live Batch Waterfall Simulation -->
+  <div id="dispenseModal" class="modal-backdrop fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4">
+      <div class="flex justify-between items-start">
         <div>
-          <h3 class="font-bold text-base">Dispense Medicine (FEFO)</h3>
-          <p id="dispenseMedName" class="text-xs text-slate-500"></p>
+          <h3 class="font-bold text-lg text-slate-900">Dispense Medicine</h3>
+          <p id="dispenseMedName" class="text-xs text-slate-500 font-medium"></p>
         </div>
         <button id="closeDispenseModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
       </div>
 
-      <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-4 text-xs">
-        <p class="font-semibold text-emerald-900">Sellable In-Date Stock: <span id="dispenseSellableAvailable">0</span> units</p>
-        <p class="text-emerald-700 mt-1">Dispensing automatically deducts from the earliest-expiring batch first.</p>
+      <!-- Live FEFO Water Fall Preview Box -->
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-600">Available In-Date Stock:</span>
+          <span id="dispenseSellableAvailable" class="font-bold text-emerald-700">0 units</span>
+        </div>
+        <div class="border-t border-slate-200 pt-2">
+          <span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 block mb-1.5">Interactive FEFO Deduction Queue</span>
+          <div id="fefoSimulationList" class="space-y-1.5 text-xs">
+            <span class="text-slate-400 italic">Enter quantity to see real-time batch deduction...</span>
+          </div>
+        </div>
       </div>
 
       <form id="dispenseForm" class="space-y-3">
         <input type="hidden" id="dispenseMedId">
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Units to Dispense</label>
-          <input type="number" id="dispenseQtyInput" min="1" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+          <input type="number" id="dispenseQtyInput" min="1" required 
+                 class="w-full border rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition" placeholder="e.g. 15">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Patient or Rx Reference (Optional)</label>
-          <input type="text" id="dispensePatientInput" placeholder="e.g. Walk-in or Rx #849" class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+          <input type="text" id="dispensePatientInput" placeholder="e.g. Rx #9042 or Walk-in" 
+                 class="w-full border rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition">
         </div>
 
-        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm transition">
+        <button type="submit" id="confirmDispenseBtn" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-semibold rounded-xl text-sm transition shadow-sm">
           Confirm FEFO Dispense
         </button>
       </form>
     </div>
   </div>
 
+  <!-- Dedicated Batch Inspector Modal -->
+  <div id="inspectorModal" class="modal-backdrop fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl space-y-4">
+      <div class="flex justify-between items-start">
+        <div>
+          <h3 class="font-bold text-lg text-slate-900">Batch Inspection Drawer</h3>
+          <p id="inspectorMedName" class="text-xs text-slate-500 font-medium"></p>
+        </div>
+        <button id="closeInspectorModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="overflow-hidden border border-slate-200 rounded-xl">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 text-slate-600 font-semibold border-b">
+            <tr>
+              <th class="p-3">Batch Number</th>
+              <th class="p-3">Remaining Units</th>
+              <th class="p-3">Expiry Date</th>
+              <th class="p-3 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody id="inspectorBatchTbody" class="divide-y divide-slate-100">
+            <tr><td colspan="4" class="p-4 text-center text-slate-400">Loading batch details...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Medicine Modal -->
-  <div id="newMedModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
-    <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
-      <div class="flex justify-between items-center mb-3">
-        <h3 class="font-bold text-base">Register New Medicine</h3>
+  <div id="newMedModal" class="modal-backdrop fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-3">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold text-base text-slate-900">Register New Medicine</h3>
         <button id="closeNewMedModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
       </div>
       <form id="newMedForm" class="space-y-3">
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Medicine Name</label>
-          <input type="text" id="newMedNameInput" required placeholder="e.g. Azithromycin 500mg" class="w-full border rounded-lg p-2 text-sm outline-none">
+          <input type="text" id="newMedNameInput" required placeholder="e.g. Azithromycin 500mg" class="w-full border rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Category</label>
-          <input type="text" id="newMedCategoryInput" required placeholder="e.g. Antibiotics" class="w-full border rounded-lg p-2 text-sm outline-none">
+          <input type="text" id="newMedCategoryInput" required placeholder="e.g. Antibiotics" class="w-full border rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
-        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm">Save Medicine</button>
+        <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm shadow-xs transition">Save Medicine</button>
       </form>
     </div>
   </div>
 
-  <!-- Add Batch Modal -->
-  <div id="newBatchModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
-    <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
+  <!-- Add Stock Batch Modal -->
+  <div id="newBatchModal" class="modal-backdrop fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-3">
       <div class="flex justify-between items-center mb-1">
-        <h3 class="font-bold text-base">Stock New Batch</h3>
+        <h3 class="font-bold text-base text-slate-900">Stock New Batch</h3>
         <button id="closeNewBatchModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
       </div>
-      <p id="newBatchMedName" class="text-xs text-slate-500 mb-3"></p>
+      <p id="newBatchMedName" class="text-xs text-slate-500 mb-2 font-medium"></p>
       <form id="newBatchForm" class="space-y-3">
         <input type="hidden" id="newBatchMedId">
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Batch Number</label>
-          <input type="text" id="newBatchNumInput" required placeholder="e.g. BATCH-2026-X" class="w-full border rounded-lg p-2 text-sm outline-none">
+          <input type="text" id="newBatchNumInput" required placeholder="e.g. BATCH-2026-X" class="w-full border rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Quantity Units</label>
-          <input type="number" id="newBatchQtyInput" min="1" required placeholder="50" class="w-full border rounded-lg p-2 text-sm outline-none">
+          <input type="number" id="newBatchQtyInput" min="1" required placeholder="50" class="w-full border rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Expiry Date</label>
-          <input type="date" id="newBatchDateInput" required class="w-full border rounded-lg p-2 text-sm outline-none">
+          <input type="date" id="newBatchDateInput" required class="w-full border rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
-        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm">Add Batch to Stock</button>
+        <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm shadow-xs transition">Add Batch to Stock</button>
       </form>
     </div>
   </div>
 
-  <script src="dashboard.js"></script>
+  <!-- Client-side Controller -->
+  <script>
+    let currentPage = 1;
+    let totalPages = 1;
+    let searchTimer = null;
+    let activeFilter = 'all'; // 'all', 'lowStock', 'hasExpired'
+    let currentActiveBatches = []; // Cached for live FEFO preview
+
+    // Toast feedback system
+    function showToast(message, isError = false) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-xl text-xs font-medium transition-all duration-300 transform translate-y-0 flex items-center space-x-2 ${
+        isError ? 'bg-red-600 text-white' : 'bg-emerald-800 text-white'
+      }`;
+      toast.innerHTML = `<span>${isError ? '✕' : '✓'}</span><span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // Verify session
+    async function verifySession() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) throw new Error('Unauthenticated');
+        const data = await res.json();
+        document.getElementById('pharmacyLabel').innerText = `${data.user.pharmacyName} (${data.user.email})`;
+      } catch {
+        window.location.href = '/index.html';
+      }
+    }
+
+    // Load inventory table with active filter
+    async function loadInventory() {
+      const search = document.getElementById('searchInput').value;
+      const [sortBy, sortOrder] = document.getElementById('sortSelect').value.split('-');
+
+      const params = new URLSearchParams({
+        search,
+        page: currentPage,
+        limit: 8,
+        sortBy,
+        sortOrder
+      });
+
+      const res = await fetch(`/api/medicines?${params}`);
+      if (res.status === 401) return (window.location.href = '/index.html');
+
+      const { data, pagination } = await res.json();
+      currentPage = pagination.page;
+      totalPages = pagination.totalPages;
+
+      // Filter on client side for quick filter chips
+      let displayedData = data;
+      if (activeFilter === 'lowStock') {
+        displayedData = data.filter(m => m.sellable_stock < 25);
+      } else if (activeFilter === 'hasExpired') {
+        displayedData = data.filter(m => m.expired_batch_count > 0);
+      }
+
+      document.getElementById('paginationInfo').innerText = `Page ${pagination.page} of ${pagination.totalPages} (${pagination.total} total recorded)`;
+      document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+      document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+
+      const tbody = document.getElementById('inventoryTbody');
+      if (displayedData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">No matching medicines found for the current criteria.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = displayedData.map((med) => {
+        const isSellable = med.sellable_stock > 0;
+        const badgeClass = isSellable ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200';
+        
+        const safetyTag = med.expired_batch_count > 0 
+          ? `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+               ⚠️ ${med.expired_batch_count} Expired Batch(es) Isolated
+             </span>`
+          : `<span class="text-xs text-slate-400 flex items-center space-x-1"><span>✓</span><span>All Lots In-Date</span></span>`;
+
+        return `
+          <tr class="table-row-hover transition">
+            <td class="px-6 py-4">
+              <span class="font-bold text-slate-900 block">${escapeHtml(med.name)}</span>
+              <span class="text-xs text-slate-400">${escapeHtml(med.category)}</span>
+            </td>
+            <td class="px-6 py-4">
+              <span class="border px-2.5 py-1 rounded-full text-xs font-bold ${badgeClass}">
+                ${med.sellable_stock} Units Sellable
+              </span>
+            </td>
+            <td class="px-6 py-4 text-xs font-medium text-slate-600">
+              ${med.next_expiry ? med.next_expiry : '<span class="text-slate-400">None</span>'}
+            </td>
+            <td class="px-6 py-4">${safetyTag}</td>
+            <td class="px-6 py-4 text-right space-x-1.5">
+              <button onclick="openInspectorModal(${med.id}, '${escapeHtml(med.name)}')" class="px-2.5 py-1 text-xs border border-slate-300 hover:bg-slate-100 rounded-lg text-slate-700 font-medium transition">
+                View Lots
+              </button>
+              <button onclick="openBatchModal(${med.id}, '${escapeHtml(med.name)}')" class="px-2.5 py-1 text-xs border border-slate-300 hover:bg-slate-100 rounded-lg text-slate-700 font-medium transition">
+                + Batch
+              </button>
+              <button onclick="openDispenseModal(${med.id}, '${escapeHtml(med.name)}', ${med.sellable_stock})" 
+                ${!isSellable ? 'disabled class="px-3 py-1 text-xs rounded-lg bg-slate-200 text-slate-400 cursor-not-allowed"' : 'class="px-3 py-1 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs active:scale-95 transition"'}>
+                Dispense (FEFO)
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Filter Chip switcher
+    function setFilter(filterKey) {
+      activeFilter = filterKey;
+      ['all', 'lowStock', 'hasExpired'].forEach(k => {
+        const btn = document.getElementById(`filterChip-${k}`);
+        if (k === filterKey) {
+          btn.className = 'px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 transition';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg text-slate-600 hover:bg-slate-100 transition';
+        }
+      });
+      loadInventory();
+    }
+
+    // Load Alerts
+    async function loadAlerts() {
+      const res = await fetch('/api/alerts/expiring?days=30');
+      const alerts = await res.json();
+      const banner = document.getElementById('alertBanner');
+      const list = document.getElementById('alertList');
+
+      if (alerts.length > 0) {
+        banner.classList.remove('hidden');
+        document.getElementById('alertCountLabel').innerText = `${alerts.length} batch(es) nearing expiry (< 30 days)`;
+        list.innerHTML = alerts.map(a => `
+          <div class="bg-white border border-amber-200/80 rounded-xl p-2.5 text-xs flex justify-between items-center shadow-2xs">
+            <div>
+              <span class="font-bold text-slate-800">${escapeHtml(a.medicine_name)}</span>
+              <span class="text-slate-400 block text-[11px]">Batch: ${escapeHtml(a.batch_number)}</span>
+            </div>
+            <div class="text-right">
+              <span class="font-bold text-red-600">${a.days_remaining}d left</span>
+              <span class="text-slate-500 block text-[11px]">${a.quantity} units</span>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    // FEFO Real-Time Simulator calculation
+    function updateFefoSimulation() {
+      const qty = parseInt(document.getElementById('dispenseQtyInput').value) || 0;
+      const simBox = document.getElementById('fefoSimulationList');
+      const submitBtn = document.getElementById('confirmDispenseBtn');
+
+      if (qty <= 0) {
+        simBox.innerHTML = `<span class="text-slate-400 italic">Enter quantity to see real-time batch deduction...</span>`;
+        submitBtn.disabled = true;
+        return;
+      }
+
+      let remaining = qty;
+      let breakdownHtml = '';
+      let totalAvailable = currentActiveBatches.reduce((sum, b) => sum + b.quantity, 0);
+
+      if (qty > totalAvailable) {
+        simBox.innerHTML = `<span class="text-red-600 font-semibold">Cannot dispense ${qty} units (Only ${totalAvailable} sellable units available).</span>`;
+        submitBtn.disabled = true;
+        return;
+      }
+
+      submitBtn.disabled = false;
+
+      for (const batch of currentActiveBatches) {
+        if (remaining <= 0) break;
+        const take = Math.min(batch.quantity, remaining);
+        const exhausted = take === batch.quantity;
+        
+        breakdownHtml += `
+          <div class="flex items-center justify-between p-1.5 rounded bg-white border border-slate-200">
+            <div>
+              <span class="font-semibold text-slate-800">${batch.batch_number}</span>
+              <span class="text-[10px] text-slate-400 ml-1">(Expires: ${batch.expiry_date})</span>
+            </div>
+            <div class="text-right">
+              <span class="font-bold text-emerald-700">-${take} units</span>
+              ${exhausted ? '<span class="text-[10px] text-red-500 block font-medium">Batch Exhausted</span>' : `<span class="text-[10px] text-slate-400 block">${batch.quantity - take} left</span>`}
+            </div>
+          </div>
+        `;
+        remaining -= take;
+      }
+
+      simBox.innerHTML = breakdownHtml;
+    }
+
+    // Open FEFO Dispense Modal
+    window.openDispenseModal = async function(id, name, available) {
+      document.getElementById('dispenseMedId').value = id;
+      document.getElementById('dispenseMedName').innerText = name;
+      document.getElementById('dispenseSellableAvailable').innerText = `${available} units`;
+      document.getElementById('dispenseQtyInput').value = 1;
+      document.getElementById('dispensePatientInput').value = '';
+
+      // Pre-fetch batches for instant waterfall simulation
+      const res = await fetch(`/api/medicines/${id}/batches`);
+      const batches = await res.json();
+      currentActiveBatches = batches.filter(b => b.is_expired === 0 && b.quantity > 0);
+
+      updateFefoSimulation();
+      document.getElementById('dispenseModal').classList.remove('hidden');
+    };
+
+    // Open Batch Inspector Drawer Modal
+    window.openInspectorModal = async function(id, name) {
+      document.getElementById('inspectorMedName').innerText = name;
+      const tbody = document.getElementById('inspectorBatchTbody');
+      tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">Loading batch details...</td></tr>`;
+      document.getElementById('inspectorModal').classList.remove('hidden');
+
+      const res = await fetch(`/api/medicines/${id}/batches`);
+      const batches = await res.json();
+
+      if (batches.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">No batches stocked for this medicine yet.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = batches.map(b => {
+        let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Active Safe</span>`;
+        if (b.is_expired === 1) {
+          statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">Expired & Locked</span>`;
+        }
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="p-3 font-semibold text-slate-800">${escapeHtml(b.batch_number)}</td>
+            <td class="p-3 font-bold">${b.quantity} units</td>
+            <td class="p-3 text-slate-600">${b.expiry_date}</td>
+            <td class="p-3 text-right">${statusBadge}</td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    window.openBatchModal = function(id, name) {
+      document.getElementById('newBatchMedId').value = id;
+      document.getElementById('newBatchMedName').innerText = name;
+      document.getElementById('newBatchNumInput').value = '';
+      document.getElementById('newBatchQtyInput').value = 50;
+      document.getElementById('newBatchDateInput').value = '';
+      document.getElementById('newBatchModal').classList.remove('hidden');
+    };
+
+    // Modal close hooks
+    ['dispenseModal', 'newMedModal', 'newBatchModal', 'inspectorModal'].forEach(mId => {
+      document.getElementById(mId).addEventListener('click', (e) => {
+        if (e.target.id === mId) document.getElementById(mId).classList.add('hidden');
+      });
+    });
+
+    document.getElementById('closeDispenseModalBtn').addEventListener('click', () => document.getElementById('dispenseModal').classList.add('hidden'));
+    document.getElementById('closeNewMedModalBtn').addEventListener('click', () => document.getElementById('newMedModal').classList.add('hidden'));
+    document.getElementById('closeNewBatchModalBtn').addEventListener('click', () => document.getElementById('newBatchModal').classList.add('hidden'));
+    document.getElementById('closeInspectorModalBtn').addEventListener('click', () => document.getElementById('inspectorModal').classList.add('hidden'));
+
+    document.getElementById('openNewMedModalBtn').addEventListener('click', () => {
+      document.getElementById('newMedNameInput').value = '';
+      document.getElementById('newMedCategoryInput').value = '';
+      document.getElementById('newMedModal').classList.remove('hidden');
+    });
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
+      } else if (e.key === 'Escape') {
+        ['dispenseModal', 'newMedModal', 'newBatchModal', 'inspectorModal'].forEach(mId => {
+          document.getElementById(mId).classList.add('hidden');
+        });
+      }
+    });
+
+    // Real-time live deduction calculation listener
+    document.getElementById('dispenseQtyInput').addEventListener('input', updateFefoSimulation);
+
+    // Search and Sort Listeners
+    document.getElementById('searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        currentPage = 1;
+        loadInventory();
+      }, 250);
+    });
+
+    document.getElementById('sortSelect').addEventListener('change', () => {
+      currentPage = 1;
+      loadInventory();
+    });
+
+    document.getElementById('prevPageBtn').addEventListener('click', () => {
+      if (currentPage > 1) { currentPage--; loadInventory(); }
+    });
+
+    document.getElementById('nextPageBtn').addEventListener('click', () => {
+      if (currentPage < totalPages) { currentPage++; loadInventory(); }
+    });
+
+    // Form Submissions
+    document.getElementById('dispenseForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('dispenseMedId').value;
+      const quantity = parseInt(document.getElementById('dispenseQtyInput').value);
+      const patientName = document.getElementById('dispensePatientInput').value;
+      const submitBtn = document.getElementById('confirmDispenseBtn');
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Deducting Batches...';
+
+      try {
+        const res = await fetch(`/api/medicines/${id}/dispense`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantity, patientName })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error);
+
+        const breakdownMsg = result.breakdown.map(b => `${b.batchNumber} (-${b.deducted}u)`).join(', ');
+        showToast(`Dispensed via FEFO: ${breakdownMsg}`);
+        document.getElementById('dispenseModal').classList.add('hidden');
+        loadInventory();
+        loadAlerts();
+      } catch (err) {
+        showToast(err.message, true);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Confirm FEFO Dispense';
+      }
+    });
+
+    document.getElementById('newMedForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('newMedNameInput').value;
+      const category = document.getElementById('newMedCategoryInput').value;
+
+      try {
+        const res = await fetch('/api/medicines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, category })
+        });
+        if (!res.ok) throw new Error('Could not save medicine');
+        showToast('Medicine registered successfully');
+        document.getElementById('newMedModal').classList.add('hidden');
+        loadInventory();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+
+    document.getElementById('newBatchForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('newBatchMedId').value;
+      const batchNumber = document.getElementById('newBatchNumInput').value;
+      const quantity = document.getElementById('newBatchQtyInput').value;
+      const expiryDate = document.getElementById('newBatchDateInput').value;
+
+      try {
+        const res = await fetch(`/api/medicines/${id}/batches`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchNumber, quantity, expiryDate })
+        });
+        if (!res.ok) throw new Error('Could not record batch');
+        showToast('Batch stocked successfully');
+        document.getElementById('newBatchModal').classList.add('hidden');
+        loadInventory();
+        loadAlerts();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/index.html';
+    });
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+    }
+
+    // Init sequence
+    verifySession();
+    loadInventory();
+    loadAlerts();
+  </script>
 </body>
 </html>
