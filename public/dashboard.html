@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | PharmFEFO</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+  <!-- Header -->
+  <header class="bg-white border-b sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 bg-emerald-600 text-white font-bold rounded flex items-center justify-center">P</div>
+        <div>
+          <span class="font-bold text-base leading-none block">PharmFEFO</span>
+          <span id="pharmacyLabel" class="text-xs text-slate-500">Loading pharmacy...</span>
+        </div>
+      </div>
+      <button id="logoutBtn" class="text-xs font-semibold text-slate-600 hover:text-red-600 border px-3 py-1.5 rounded bg-white">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+
+    <!-- 30-Day Critical Alerts Banner -->
+    <div id="alertBanner" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-amber-800 font-bold text-sm flex items-center space-x-1.5">
+          <span>⚠️</span>
+          <span id="alertCountLabel">0 batch(es) expiring within 30 days</span>
+        </div>
+      </div>
+      <div id="alertList" class="grid sm:grid-cols-2 md:grid-cols-3 gap-2"></div>
+    </div>
+
+    <!-- Controls Row -->
+    <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div class="flex-1 relative">
+        <input type="text" id="searchInput" placeholder="Search medicine or category (e.g. Paracetamol)..." 
+               class="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+        <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      </div>
+      
+      <div class="flex items-center space-x-3">
+        <select id="sortSelect" class="border rounded-lg text-sm px-3 py-2 bg-white">
+          <option value="m.name-asc">Name (A-Z)</option>
+          <option value="m.name-desc">Name (Z-A)</option>
+          <option value="sellable_stock-asc">Stock (Lowest First)</option>
+          <option value="sellable_stock-desc">Stock (Highest First)</option>
+        </select>
+        <button id="openNewMedModalBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm whitespace-nowrap">+ New Medicine</button>
+      </div>
+    </div>
+
+    <!-- Inventory Table -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-100 text-slate-600 font-semibold text-xs uppercase tracking-wider">
+          <tr>
+            <th class="px-6 py-3">Medicine & Category</th>
+            <th class="px-6 py-3">Sellable In-Date Stock</th>
+            <th class="px-6 py-3">Next Expiring Batch</th>
+            <th class="px-6 py-3">Audit Warnings</th>
+            <th class="px-6 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="inventoryTbody" class="divide-y divide-slate-100">
+          <tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">Loading stock records...</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div class="px-6 py-4 bg-slate-50 border-t flex items-center justify-between text-xs text-slate-600">
+        <div id="paginationInfo">Showing 0 of 0 medicines</div>
+        <div class="space-x-2">
+          <button id="prevPageBtn" class="px-3 py-1 border rounded bg-white disabled:opacity-40">Previous</button>
+          <button id="nextPageBtn" class="px-3 py-1 border rounded bg-white disabled:opacity-40">Next</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- FEFO Dispense Modal -->
+  <div id="dispenseModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+      <div class="flex justify-between items-center mb-3">
+        <div>
+          <h3 class="font-bold text-base">Dispense Medicine (FEFO)</h3>
+          <p id="dispenseMedName" class="text-xs text-slate-500"></p>
+        </div>
+        <button id="closeDispenseModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-4 text-xs">
+        <p class="font-semibold text-emerald-900">Sellable In-Date Stock: <span id="dispenseSellableAvailable">0</span> units</p>
+        <p class="text-emerald-700 mt-1">Dispensing automatically deducts from the earliest-expiring batch first.</p>
+      </div>
+
+      <form id="dispenseForm" class="space-y-3">
+        <input type="hidden" id="dispenseMedId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Units to Dispense</label>
+          <input type="number" id="dispenseQtyInput" min="1" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Patient or Rx Reference (Optional)</label>
+          <input type="text" id="dispensePatientInput" placeholder="e.g. Walk-in or Rx #849" class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+
+        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm transition">
+          Confirm FEFO Dispense
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Medicine Modal -->
+  <div id="newMedModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-base">Register New Medicine</h3>
+        <button id="closeNewMedModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+      <form id="newMedForm" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Medicine Name</label>
+          <input type="text" id="newMedNameInput" required placeholder="e.g. Azithromycin 500mg" class="w-full border rounded-lg p-2 text-sm outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Category</label>
+          <input type="text" id="newMedCategoryInput" required placeholder="e.g. Antibiotics" class="w-full border rounded-lg p-2 text-sm outline-none">
+        </div>
+        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm">Save Medicine</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Batch Modal -->
+  <div id="newBatchModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold text-base">Stock New Batch</h3>
+        <button id="closeNewBatchModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+      <p id="newBatchMedName" class="text-xs text-slate-500 mb-3"></p>
+      <form id="newBatchForm" class="space-y-3">
+        <input type="hidden" id="newBatchMedId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Batch Number</label>
+          <input type="text" id="newBatchNumInput" required placeholder="e.g. BATCH-2026-X" class="w-full border rounded-lg p-2 text-sm outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Quantity Units</label>
+          <input type="number" id="newBatchQtyInput" min="1" required placeholder="50" class="w-full border rounded-lg p-2 text-sm outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Expiry Date</label>
+          <input type="date" id="newBatchDateInput" required class="w-full border rounded-lg p-2 text-sm outline-none">
+        </div>
+        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm">Add Batch to Stock</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
