@@ -40,4 +40,26 @@ db.exec(`
   );
 `);
 
+// Add to db.js right after existing tables:
+db.exec(`
+  CREATE TABLE IF NOT EXISTS outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    medicine_id INTEGER,
+    medicine_name TEXT,
+    type TEXT,
+    message TEXT,
+    stock INTEGER,
+    threshold INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+// Safe migration for existing databases
+try {
+  db.exec(`ALTER TABLE batches ADD COLUMN is_quarantined INTEGER DEFAULT 0;`);
+} catch (e) { /* column already exists */ }
+try {
+  db.exec(`ALTER TABLE batches ADD COLUMN is_flagged INTEGER DEFAULT 0;`);
+} catch (e) { /* column already exists */ }
+
 export default db;
